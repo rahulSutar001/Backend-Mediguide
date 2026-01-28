@@ -56,7 +56,7 @@ class TestParameterResponse(BaseModel):
     name: str
     value: str
     unit: Optional[str] = None
-    normal_range: str
+    normal_range: Optional[str] = ""
     range: Optional[str] = None
     flag: Literal['normal', 'high', 'low']
     explanation: Optional['ExplanationResponse'] = None

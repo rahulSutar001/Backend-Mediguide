@@ -2,6 +2,7 @@
 MediGuide FastAPI Application
 Production-grade backend for medical report analysis
 """
+
 import logging
 from fastapi import FastAPI, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,16 +20,13 @@ app = FastAPI(
     version=settings.VERSION,
     description="MediGuide AI - Medical Report Analysis API",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
 )
 
 # CORS middleware - use settings to allow environment configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS + [
-        "https://mediguide-version1001.vercel.app",
-        "https://mediguide-version1.vercel.app",
-    ],
+    allow_origins="*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -44,19 +42,30 @@ app.include_router(chatbot.router, prefix=settings.API_V1_PREFIX)
 app.include_router(admin.router, prefix=settings.API_V1_PREFIX)
 
 from pydantic import BaseModel
+
+
 class TokenCheck(BaseModel):
     token: str
+
 
 @app.post("/api/v1/debug/token")
 async def debug_token_check(body: TokenCheck):
     """Temporary debug endpoint to test token verification logic"""
     try:
         from app.core.security import verify_jwt_token
-        user = await verify_jwt_token(body.token)
-        return {"status": "valid", "user": user, "supabase_url": settings.SUPABASE_URL}
-    except Exception as e:
-        return {"status": "invalid", "error": str(e), "supabase_url": settings.SUPABASE_URL}
 
+        user = await verify_jwt_token(body.token)
+        return {
+            "status": "valid",
+            "user": user,
+            "supabase_url": settings.SUPABASE_URL,
+        }
+    except Exception as e:
+        return {
+            "status": "invalid",
+            "error": str(e),
+            "supabase_url": settings.SUPABASE_URL,
+        }
 
 
 @app.post("/api/v1/debug/ocr")
@@ -87,9 +96,9 @@ async def debug_ocr(file: UploadFile = File(...)):
             "/usr/bin/tesseract",
             "/usr/local/bin/tesseract",
             "/nix/var/nix/profiles/default/bin/tesseract",
-            "/bin/tesseract"
+            "/bin/tesseract",
         ]
-        
+
         found_binary = None
         for p in common_paths:
             exists = os.path.exists(p)
@@ -99,8 +108,8 @@ async def debug_ocr(file: UploadFile = File(...)):
 
         # 3. Try to configure pytesseract if we found it
         if found_binary and not shutil.which("tesseract"):
-             pytesseract.pytesseract.tesseract_cmd = found_binary
-             response_data["manual_path_configured"] = found_binary
+            pytesseract.pytesseract.tesseract_cmd = found_binary
+            response_data["manual_path_configured"] = found_binary
 
         # 4. Check Tesseract Version/Path (After potential fix)
         try:
@@ -109,7 +118,7 @@ async def debug_ocr(file: UploadFile = File(...)):
         except Exception as e:
             version = f"Error: {e}"
             cli_path = "Unknown"
-        
+
         response_data["tesseract_version"] = str(version)
         response_data["tesseract_cmd_final"] = str(cli_path)
 
@@ -120,15 +129,18 @@ async def debug_ocr(file: UploadFile = File(...)):
 
         # 6. Run OCR
         text = pytesseract.image_to_string(image)
-        
+
         response_data["status"] = "success"
-        response_data["extracted_text_preview"] = text[:500] if text else "No text extracted"
+        response_data["extracted_text_preview"] = (
+            text[:500] if text else "No text extracted"
+        )
         response_data["full_text_length"] = len(text)
 
         return response_data
 
     except Exception as e:
         import traceback
+
         response_data["status"] = "failed"
         response_data["error"] = str(e)
         response_data["traceback"] = traceback.format_exc()
@@ -141,7 +153,7 @@ async def root():
     return {
         "message": "MediGuide API",
         "version": settings.VERSION,
-        "docs": "/docs"
+        "docs": "/docs",
     }
 
 
@@ -155,29 +167,29 @@ async def health_check():
 async def global_exception_handler(request: Request, exc: Exception):
     """Global exception handler with proper logging"""
     import traceback
-    
+
     # Log the full error traceback
     error_traceback = traceback.format_exc()
     logger.error(f"Unhandled exception: {str(exc)}\n{error_traceback}")
     print(f"[ERROR] Unhandled exception: {str(exc)}")
     print(f"[ERROR] Traceback:\n{error_traceback}")
-    
+
     return JSONResponse(
         status_code=500,
         content={
             "error": "INTERNAL_SERVER_ERROR",
-            "message": str(exc) if settings.DEBUG else "An unexpected error occurred",
+            "message": str(exc)
+            if settings.DEBUG
+            else "An unexpected error occurred",
             "code": "INTERNAL_SERVER_ERROR",
-            "details": error_traceback if settings.DEBUG else None
-        }
+            "details": error_traceback if settings.DEBUG else None,
+        },
     )
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(
-        "app.main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=settings.DEBUG
+        "app.main:app", host="0.0.0.0", port=8000, reload=settings.DEBUG
     )
