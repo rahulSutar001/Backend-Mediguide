@@ -12,9 +12,7 @@ class GeminiService:
         if not api_key:
             raise ValueError("GOOGLE_API_KEY environment variable not set")
         genai.configure(api_key=api_key)
-        # User requested "2.5 flash", likely meaning 1.5 Flash (current standard) or 2.0 Flash. 
-        # Using 1.5 Flash for stability.
-        self.model = genai.GenerativeModel('gemini-2.5-flash')
+        self.model = genai.GenerativeModel('gemini-1.5-flash')
 
     def generate_json(self, prompt: str) -> dict:
         """
@@ -79,22 +77,47 @@ class GeminiService:
         """
         try:
             image = Image.open(io.BytesIO(image_bytes))
+            self.model = genai.GenerativeModel('gemini-1.5-flash')
             
             prompt = """
             You are an expert medical AI assistant. Analyze this medical lab report image and extract the following information in strict JSON format:
             
-            1.  **patient_name**: Name of the patient (or "Unknown").
-            2.  **date**: Date of the report (YYYY-MM-DD format required. Return null if not found or ambiguous).
-            3.  **lab_name**: Name of the laboratory/hospital.
-            4.  **report_type**: Type of report (e.g., "CBC", "Lipid Profile", "Thyroid Profile").
-            5.  **parameters**: A list of test results, where each item has:
+            1.  **patient_name**: Name of the patient. Return null if not explicitly found. DO NOT guess or return "Unknown".
+            2.  **patient_age**: Age of the patient. Look for labels like "Age", "Age / Gender", "Age/Sex", "Age (Yrs)". 
+                - If you see "Age / Gender : 20 Yrs / Female", extract "20 Yrs" exactly. 
+                - Include the unit if present (e.g., "20 Yrs", "20 Years"). 
+                - Return strictly text as seen. Return null if not explicitly found.
+            3.  **patient_sex**: Sex/Gender. Look for labels like "Gender", "Sex", "Age / Gender".
+                - If you see "Age / Gender : 20 Yrs / Female", extract "Female" exactly.
+                - Return strictly text as seen (e.g., "Male", "Female", "M", "F"). Return null if not explicitly found.
+            4.  **date**: Date of the report (YYYY-MM-DD format required. Return null if not found or ambiguous).
+            5.  **lab_name**: Name of the laboratory/hospital.
+            6.  **report_type**: Type of report (e.g., "CBC", "Lipid Profile", "Thyroid Profile").
+            7.  **overall_health_indication**: A one-word status of the report (e.g., "Normal", "Mildly Abnormal", "Attention Required").
+            8.  **clinical_summary**: A concise, holistic clinical summary of the entire report for the patient.
+                - Explain the overall health indication.
+                - Reassure the user where results are normal.
+                - Briefly mention areas that might need attention without being alarming.
+                - Use very simple English (10th-grade level).
+                - Tone: Calm, professional, reassuring.
+            9.  **parameters**: A list of test results, where each item has:
                 -   **name**: Name of the test/parameter.
                 -   **value**: Measured value.
                 -   **unit**: Unit of measurement (e.g., mg/dL).
                 -   **normal_range**: Reference range provided in the report.
                 -   **flag**: "high", "low", or "normal" based on the value and range.
-                -   **explanation**: A simplified, easy-to-understand explanation of what this result means for the patient (1 sentence).
-            6.  **summary**: A brief, friendly summary of the report for the patient (2-3 sentences).
+                -   **category**: The physiological system or category this test belongs to (e.g., "Blood Counts", "White Blood Cell Profile", "Liver Function", "Kidney Function").
+                -   **explanation**: A conceptual explanation of the test.
+                    -   Explain WHAT the test measures.
+                    -   Explain WHY it is important.
+                    -   Explain what a NORMAL result generally means.
+                    -   MUST NOT repeat the reference range.
+                    -   MUST NOT use medical jargon.
+            10. **system_summaries**: A list of objects summarizing groups of parameters:
+                -   **category**: The category name (e.g., "Blood Counts").
+                -   **status**: "Normal" or "Attention Required".
+                -   **description**: A brief (1-2 sentence) explanation of what these results mean for that system. Use reassurance for normal systems.
+            11. **summary**: A brief, friendly 2-3 sentence overview for the home screen.
             
             Return ONLY the valid JSON object. Do not include markdown code blocks or additional text.
             """

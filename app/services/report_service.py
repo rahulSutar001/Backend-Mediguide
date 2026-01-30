@@ -124,6 +124,7 @@ class ReportService:
 
         # Background processing with FINAL validated image
         if background_tasks:
+            print(f"[DEBUG] Adding _process_report to background tasks for {report_id}")
             background_tasks.add_task(
                 self._process_report,
                 report_id,
@@ -257,6 +258,7 @@ class ReportService:
         user_id: str,
         image_data: bytes,
     ):
+        print(f"[DEBUG] _process_report STARTED for {report_id}")
         try:
             # 0% - Uploading to Storage (Background)
             file_path = f"{user_id}/{report_id}.png"
@@ -278,8 +280,10 @@ class ReportService:
             
             # 30% - Sending to Gemini
             await self._update_progress(report_id, 30)
+            print(f"[DEBUG] Calling Gemini for report {report_id}")
             
             extracted_data = gemini_service.analyze_medical_report(image_data)
+            print(f"[DEBUG] Gemini returned for report {report_id}")
             
             # 70% - Analysis Complete, Saving Data
             await self._update_progress(report_id, 70)
@@ -301,14 +305,30 @@ class ReportService:
                     parsed_date = None
 
             # Update basic report info
-            self.db.table("reports").update(
-                {
-                    "type": extracted_data.get("report_type", "Unknown"),
-                    "lab_name": extracted_data.get("lab_name"),
-                    "date": parsed_date,
-                    "updated_at": datetime.utcnow().isoformat(),
-                }
-            ).eq("id", report_id).execute()
+            update_payload = {
+                "type": extracted_data.get("report_type", "Unknown"),
+                "lab_name": extracted_data.get("lab_name"),
+                "date": parsed_date,
+                "updated_at": datetime.utcnow().isoformat(),
+            }
+            
+            # Try to include patient_name if available
+            # Try to include patient_name if available
+            patient_name = extracted_data.get("patient_name")
+            
+            # 4. Fix: Handle missing patient name correctly
+            if patient_name is None:
+                update_payload["patient_name"] = "Patient name not provided in lab report"
+            else:
+                 update_payload["patient_name"] = patient_name
+
+            try:
+                self.db.table("reports").update(update_payload).eq("id", report_id).execute()
+            except Exception as e:
+                print(f"[WARNING] Failed to update report with patient_name, retrying without it. Error: {e}")
+                if "patient_name" in update_payload:
+                    del update_payload["patient_name"]
+                    self.db.table("reports").update(update_payload).eq("id", report_id).execute()
 
             # Process Parameters & Explanations
             parameters = []
@@ -352,8 +372,46 @@ class ReportService:
                         "meaning": explanation_text,
                         "causes": [], # Gemini summary usually doesn't give structured causes list unless asked
                         "next_steps": ["Consult your doctor."],
-                        "generated_at": datetime.utcnow().isoformat(),
+                "generated_at": datetime.utcnow().isoformat(),
                     })
+
+            # --- METADATA INJECTION (Age, Sex, Indication, Clinical Summary, System Summaries) ---
+            meta_age = extracted_data.get("patient_age")
+            meta_sex = extracted_data.get("patient_sex")
+            meta_indication = extracted_data.get("overall_health_indication")
+            meta_clinical_summary = extracted_data.get("clinical_summary")
+            meta_system_summaries = extracted_data.get("system_summaries")
+            meta_summary = extracted_data.get("summary")
+
+            metadata_params = []
+            if meta_age:
+                metadata_params.append(("METADATA_AGE", str(meta_age)))
+            if meta_sex:
+                metadata_params.append(("METADATA_SEX", str(meta_sex)))
+            if meta_indication:
+                metadata_params.append(("METADATA_INDICATION", str(meta_indication)))
+            if meta_clinical_summary:
+                metadata_params.append(("METADATA_CLINICAL_SUMMARY", str(meta_clinical_summary)))
+            if meta_system_summaries:
+                metadata_params.append(("METADATA_SYSTEM_SUMMARIES", json.dumps(meta_system_summaries)))
+            if meta_summary:
+                metadata_params.append(("METADATA_SUMMARY", str(meta_summary)))
+
+            for m_name, m_val in metadata_params:
+                m_id = str(uuid.uuid4())
+                m_record = {
+                    "id": m_id,
+                    "report_id": report_id,
+                    "name": m_name,
+                    "value": m_val,
+                    "unit": None,
+                    "normal_range": None,
+                    "flag": "normal",
+                    "created_at": datetime.utcnow().isoformat(),
+                }
+                param_records.append(m_record)
+                parameters.append(m_record)
+
 
             # Batch Insert
             if param_records:
@@ -429,6 +487,7 @@ class ReportService:
         search: Optional[str] = None,
         report_type: Optional[str] = None,
         flag_level: Optional[str] = None,
+        status: Optional[str] = None,
         time_range: str = "all",
         page: int = 1,
         limit: int = 20,
@@ -447,6 +506,25 @@ class ReportService:
 
         if flag_level:
             query = query.eq("flag_level", flag_level.lower())
+
+        if status:
+            query = query.eq("status", status)
+
+        if time_range and time_range != "all":
+            from datetime import timedelta
+            now = datetime.utcnow()
+            start_date = None
+            
+            if time_range == "7d":
+                start_date = now - timedelta(days=7)
+            elif time_range == "30d":
+                start_date = now - timedelta(days=30)
+            elif time_range == "90d":
+                start_date = now - timedelta(days=90)
+                
+            if start_date:
+                # Filter by created_at
+                query = query.gte("created_at", start_date.isoformat())
 
         offset = (page - 1) * limit
         query = query.order("created_at", desc=True).range(offset, offset + limit - 1)

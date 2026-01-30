@@ -26,6 +26,7 @@ class InviteFamilyRequest(BaseModel):
     email: Optional[str] = None
     phone_number: Optional[str] = None
     nickname: Optional[str] = None
+    target_user_id: Optional[str] = None
 
 
 class AcceptConnectionRequest(BaseModel):

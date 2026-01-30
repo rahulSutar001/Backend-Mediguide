@@ -61,12 +61,23 @@ class SynthesisService:
         1. Summarize the user's current health status based on this report.
         2. Identify key trends (e.g., "Hemoglobin has increased from 11.2 to 12.5").
         3. Write a "Doctor's Précis" - a concise, professional summary for a GP.
+        4. Suggest 3-5 pertinent questions for the patient to ask their doctor, strictly based on these findings.
+           - IF RESULTS ARE NORMAL: Suggest maintenance or preventive questions (e.g., "When should I retest?").
+           - IF RESULTS ARE ABNORMAL: Suggest clarification questions (e.g., "What lifestyle changes can improve this specific result?").
+        5. Provide 3 General Wellness Recommendations (lifestyle/diet) strictly context-aware to these findings.
+           - RECOMMENDATION MUST BE RELEVANT TO THE TEST TPYE (e.g. Iron rich foods for low Hemoglobin).
+           - Do NOT give medical advice or prescriptions. Focus on lifestyle.
 
         RETURN STRICT JSON FORMAT:
         {{
             "status_summary": "1-2 sentences on current status",
             "key_trends": ["trend 1", "trend 2"],
-            "doctor_precis": "Paragraph for the doctor"
+            "doctor_precis": "Paragraph for the doctor",
+            "suggested_questions": ["Question 1", "Question 2"],
+            "wellness_recommendations": [
+                {{"title": "Topic", "description": "Brief advice..."}},
+                {{"title": "Topic", "description": "Brief advice..."}}
+            ]
         }}
         """
 
