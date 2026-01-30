@@ -1,4 +1,3 @@
-
 import os
 import json
 import google.generativeai as genai
@@ -6,13 +5,14 @@ from PIL import Image
 import io
 from app.core.config import settings
 
+
 class GeminiService:
     def __init__(self):
         api_key = settings.GOOGLE_API_KEY
         if not api_key:
             raise ValueError("GOOGLE_API_KEY environment variable not set")
         genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel('gemini-1.5-flash')
+        self.model = genai.GenerativeModel("gemini-2.5-flash")
 
     def generate_json(self, prompt: str) -> dict:
         """
@@ -22,10 +22,10 @@ class GeminiService:
             # Force JSON structure in prompt if not present
             if "JSON" not in prompt:
                 prompt += "\n\nReturn strict JSON."
-                
+
             response = self.model.generate_content(prompt)
             text = response.text.strip()
-            
+
             # Clean up markdown code blocks
             if text.startswith("```json"):
                 text = text[7:]
@@ -33,7 +33,7 @@ class GeminiService:
                 text = text[3:]
             if text.endswith("```"):
                 text = text[:-3]
-                
+
             return json.loads(text.strip())
         except Exception as e:
             print(f"[ERROR] Gemini JSON generation failed: {e}")
@@ -58,10 +58,10 @@ class GeminiService:
         try:
             image = Image.open(io.BytesIO(image_bytes))
             prompt = "Is this image a medical lab report or health document? Reply strictly with YES or NO."
-            
+
             response = self.model.generate_content([prompt, image])
             answer = response.text.strip().upper()
-            
+
             print(f"[DEBUG] Medical Validation: {answer}")
             return "YES" in answer
         except Exception as e:
@@ -77,8 +77,8 @@ class GeminiService:
         """
         try:
             image = Image.open(io.BytesIO(image_bytes))
-            self.model = genai.GenerativeModel('gemini-1.5-flash')
-            
+            self.model = genai.GenerativeModel("gemini-2.5-flash")
+
             prompt = """
             You are an expert medical AI assistant. Analyze this medical lab report image and extract the following information in strict JSON format:
             
@@ -117,20 +117,24 @@ class GeminiService:
                 -   **category**: The category name (e.g., "Blood Counts").
                 -   **status**: "Normal" or "Attention Required".
                 -   **description**: A brief (1-2 sentence) explanation of what these results mean for that system. Use reassurance for normal systems.
-            11. **summary**: A brief, friendly 2-3 sentence overview for the home screen.
+            11. **normal_values_summary**: A single, reassuring paragraph summarizing all the parameters that are within normal range.
+                - Mention the key systems/categories that are healthy (e.g., "Your Kidney Function and Electrolytes are within normal limits").
+                - Do not list every single parameter.
+                - Keep it concise and encouraging. 
+            12. **summary**: A brief, friendly 2-3 sentence overview for the home screen.
             
             Return ONLY the valid JSON object. Do not include markdown code blocks or additional text.
             """
 
             response = self.model.generate_content([prompt, image])
-            
+
             # Clean up response text to ensure it's valid JSON
             text = response.text.strip()
             if text.startswith("```json"):
                 text = text[7:]
             if text.endswith("```"):
                 text = text[:-3]
-            
+
             return json.loads(text.strip())
 
         except Exception as e:
@@ -152,10 +156,10 @@ class GeminiService:
             If the answer is not in the report, use general medical knowledge but clarify that it's general advice.
             Keep the answer concise and easy to understand.
             """
-            
+
             response = self.model.generate_content(prompt)
             return response.text
-            
+
         except Exception as e:
             print(f"Gemini Chat Error: {e}")
             raise e
