@@ -35,6 +35,7 @@ class ReportResponse(BaseModel):
     """Response model for report details"""
     id: str
     user_id: str
+    patient_name: Optional[str] = None
     date: Optional[str] = None
     type: str
     lab_name: Optional[str] = None

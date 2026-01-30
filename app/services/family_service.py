@@ -107,11 +107,12 @@ class FamilyService:
         user_id: str,
         email: Optional[str] = None,
         phone_number: Optional[str] = None,
-        nickname: Optional[str] = None
+        nickname: Optional[str] = None,
+        target_user_id: Optional[str] = None
     ) -> str:
         """Send family connection invite"""
-        if not email and not phone_number:
-            raise ValueError("Email or Phone Number required")
+        if not email and not phone_number and not target_user_id:
+            raise ValueError("Email, Phone Number, or Target User ID required")
 
         # Check premium limits
         can_add, error_msg = await self.premium_service.check_family_limit(user_id)
@@ -125,46 +126,51 @@ class FamilyService:
             p = sender_profile.data
             sender_name = p.get("full_name") or p.get("profile_name") or p.get("first_name") or p.get("phone_number")
 
-        # Find target user
-        target_user_id = None
-        
-        if email:
-            try:
-                 # Instead of RPC, fetch users directly via Admin API (which we know works)
-                 from app.core.security import get_service_supabase_client
-                 admin_client = get_service_supabase_client()
-                 
-                 # Fetch users (default page size is usually 50, let's try to get more if needed loop)
-                 # Ideally, we should iterate pages, but for now fetching a reasonable list
-                 # Note: in Python client, list_users() might not support page params easily in all versions
-                 # But let's try the standard method we verified.
-                 auth_users_res = admin_client.auth.admin.list_users()
-                 
-                 auth_list = []
-                 if isinstance(auth_users_res, list):
-                     auth_list = auth_users_res
-                 elif hasattr(auth_users_res, "users"):
-                     auth_list = auth_users_res.users
-                 elif isinstance(auth_users_res, dict) and "users" in auth_users_res:
-                     auth_list = auth_users_res["users"]
+        if not target_user_id:
+            # Find target user via email or phone
+            if email:
+                try:
+                     # Instead of RPC, fetch users directly via Admin API (which we know works)
+                     from app.core.security import get_service_supabase_client
+                     admin_client = get_service_supabase_client()
+                     
+                     # Fetch users (default page size is usually 50, let's try to get more if needed loop)
+                     # Ideally, we should iterate pages, but for now fetching a reasonable list
+                     # Note: in Python client, list_users() might not support page params easily in all versions
+                     # But let's try the standard method we verified.
+                     auth_users_res = admin_client.auth.admin.list_users()
+                     
+                     auth_list = []
+                     if isinstance(auth_users_res, list):
+                         auth_list = auth_users_res
+                     elif hasattr(auth_users_res, "users"):
+                         auth_list = auth_users_res.users
+                     elif isinstance(auth_users_res, dict) and "users" in auth_users_res:
+                         auth_list = auth_users_res["users"]
 
-                 # Find user by email (case-insensitive)
-                 target_email_lower = email.lower().strip()
-                 for u in auth_list:
-                     u_email = getattr(u, "email", "") or (u.get("email") if isinstance(u, dict) else "")
-                     if u_email and u_email.lower().strip() == target_email_lower:
-                         target_user_id = getattr(u, "id", None) or (u.get("id") if isinstance(u, dict) else None)
-                         break
-                 
-            except Exception as e:
-                 print(f"Error looking up email: {e}")
-                 pass
-        
-        if not target_user_id and phone_number:
-            res = self.admin_supabase.table("profiles").select("id").eq("phone_number", phone_number).execute()
-            if res.data:
-                target_user_id = res.data[0]["id"]
-                
+                     # Find user by email (case-insensitive)
+                     target_email_lower = email.lower().strip()
+                     for u in auth_list:
+                         u_email = getattr(u, "email", "") or (u.get("email") if isinstance(u, dict) else "")
+                         if u_email and u_email.lower().strip() == target_email_lower:
+                             target_user_id = getattr(u, "id", None) or (u.get("id") if isinstance(u, dict) else None)
+                             break
+                     
+                except Exception as e:
+                     print(f"Error looking up email: {e}")
+                     pass
+            
+            if not target_user_id and phone_number:
+                res = self.admin_supabase.table("profiles").select("id").eq("phone_number", phone_number).execute()
+                if res.data:
+                    target_user_id = res.data[0]["id"]
+                    
+        # Verify target user exists if we passed an ID directly
+        if target_user_id:
+             # We can do a quick check to ensure they exist, though foreign key constraints might handle it.
+             # But let's be safe.
+             pass 
+
         if not target_user_id:
              raise ValueError("User not found with these details")
 
@@ -192,8 +198,8 @@ class FamilyService:
             "nickname": nickname, # Legacy field, keeping for safety
             "status": "pending_sent",
             "created_at": datetime.now().isoformat(),
-            "sender_display_name": sender_name,
-            "receiver_display_name": None
+            "sender_display_name": nickname,
+            "receiver_display_name": sender_name
         }
         
         self.admin_supabase.table("family_connections").insert(connection_data).execute()

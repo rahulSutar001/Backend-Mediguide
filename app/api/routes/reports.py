@@ -34,11 +34,11 @@ router = APIRouter(prefix="/reports", tags=["reports"])
     status_code=status.HTTP_201_CREATED,
 )
 async def upload_report(
-    request: Request,  # ✅ REQUIRED
+    request: Request,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     report_type: Optional[str] = None,
     user_id: str = Depends(get_user_id),
-    background_tasks: BackgroundTasks = BackgroundTasks(),
 ):
     print(f"[DEBUG] Upload Endpoint Hit. Type: {report_type}, Filename: {file.filename}, Content-Type: {file.content_type}")
     if file.content_type not in [
@@ -138,6 +138,7 @@ async def list_reports(
     target_user_id: Optional[str] = None,
     page: int = 1,
     limit: int = 20,
+    status: Optional[str] = None,
     user_id: str = Depends(get_user_id),
 ):
     service = ReportService(request)
@@ -158,6 +159,7 @@ async def list_reports(
         search=search,
         report_type=report_type,
         flag_level=flag_level,
+        status=status,
         time_range=time_range,
         page=page,
         limit=limit,
